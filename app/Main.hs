@@ -3,9 +3,13 @@ module Main where
 import System.Environment (getArgs)
 
 import Data.ByteString (readFile, ByteString)
-import Data.ByteString.Char8 (words, readInt)
+import Data.ByteString.Char8 (words, take, drop, readInt, unpack, dropWhile)
+import Data.Char (isSpace)
+import Data.Maybe
+import Data.Either
+import Data.Either.Utils
 
-import Prelude hiding (readFile, words)
+import Prelude hiding (readFile, words, take, drop, unpack, dropWhile)
 
 data Pixel = ColourPixel (Int, Int, Int)
            | GrayPixel Int
@@ -18,37 +22,47 @@ data Picture = Picture { width :: Int
                        , pixels :: [Pixel]
                        }
 
-colourPixels :: [Int] -> [Pixel]
-colourPixels [] = []
-colourPixels (r:g:b:t) = ColourPixel (r, g, b) : colourPixels(t)
+colourPixels :: ByteString -> [Pixel]
+colourPixels s =
+    case readInt (dropWhile isSpace s) of
+    Nothing -> []
+    Just (r, s) ->
+        case readInt (dropWhile isSpace s) of
+        Nothing -> []
+        Just (g, s) ->
+            case readInt (dropWhile isSpace s) of
+            Nothing -> []
+            Just (b, s) ->
+                ColourPixel (r, g, b) : colourPixels s
 
-myReadInt :: ByteString -> Int
-myReadInt p =
-    case readInt p of
-        Nothing -> 0
-        Just (v, rest) -> v
+colourPicture :: ByteString -> Either Picture String
+colourPicture s =
+    case unpack (take 2 s) of
+    "P3" ->
+        let s' = drop 2 s in
+        case readInt (dropWhile isSpace s') of
+        Nothing -> Right "Wrong width"
+        Just (w, s) ->
+            case readInt (dropWhile isSpace s) of
+            Nothing -> Right "Wrong height"
+            Just (h, s) ->
+                case readInt (dropWhile isSpace s) of
+                Nothing -> Right "Wrong max value"
+                Just (_, s) -> Left (Picture w h pixels)
+                    where pixels = colourPixels s
+    otherwise -> Right "Wrong magic number"
 
-colourPicture :: [ByteString] -> Maybe Picture
-colourPicture (_:w:h:_:p) =
-    case readInt w of
-        Nothing -> Nothing
-        Just (w, rest) ->
-            case readInt h of
-                Nothing -> Nothing
-                Just (h, rest) -> Just $ Picture w h (colourPixels (map myReadInt p))
 
 toGrayscale :: Pixel -> Pixel
 toGrayscale (ColourPixel (r, g, b)) = GrayPixel ((r * 30 + g * 59 + b * 11) `div` 100)
 
-convertPicture :: (Pixel -> Pixel) -> Maybe Picture -> Maybe Picture
-convertPicture f (Just (Picture w h pixels)) = Just $ Picture w h (map f pixels)
-convertPicture _ Nothing = Nothing
+convertPicture :: (Pixel -> Pixel) -> Picture -> Picture
+convertPicture f (Picture w h pixels) = Picture w h (map f pixels)
 
-serialisePicture :: Maybe Picture -> String
-serialisePicture (Just p) = unwords $ header ++ content
+serialisePicture :: Picture -> String
+serialisePicture p = unwords $ header ++ content
     where header = ["P2", show (width p), show (height p), show 255]
           content = map show (pixels p)
-serialisePicture Nothing = ""
 
 main :: IO ()
 main = do
@@ -56,6 +70,13 @@ main = do
 
     inp <- readFile (head args)
 
-    let grayscalePicture = convertPicture toGrayscale (colourPicture (words inp))
+    let cp = colourPicture inp
 
-    writeFile "/tmp/dump.pgm" (serialisePicture grayscalePicture)
+    --print $ case cp of
+    --    Left p -> show $ width p
+    --    Right s -> s
+
+    let gp = convertPicture toGrayscale (fromLeft cp)
+    let outp = serialisePicture gp
+
+    writeFile "/tmp/dump.pgm" outp
