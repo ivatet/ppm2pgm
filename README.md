@@ -1,8 +1,6 @@
 # ppm2pgm
 
-A small hello-world like program to convert between image formats written in Haskell:
-
-![Input](img/inp.ppm) -> ![Output](img/outp.pgm)
+A small hello-world like program to convert between image formats written in Haskell.
 
 Build:
 
